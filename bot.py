@@ -21,13 +21,14 @@ This code is open-source and released under the MIT License. See the LICENSE fil
 import random
 import chess
 import time
+import numpy as np
 from collections.abc import Iterator
 from contextlib import contextmanager
-import test_bot
+from j_mct import MCTS, ChessGame
 
 
 @contextmanager
-def game_manager() -> Iterator[None]:
+def game_manager():
     """Creates context for game."""
 
     print("===== GAME STARTED =====")
@@ -41,47 +42,9 @@ def game_manager() -> Iterator[None]:
         print(f"Total game time = {total:.3f} seconds")
     print("===== GAME ENDED =====")
 
-
-class Bot:
-    def __init__(self, fen=None):
-        self.board = chess.Board(fen if fen else "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-
-    def check_move_is_legal(self, initial_position, new_position) -> bool:
-
-        """
-            To check if, from an initial position, the new position is valid.
-
-            Args:
-                initial_position (str): The starting position given chess notation.
-                new_position (str): The new position given chess notation.
-
-            Returns:
-                bool: If this move is legal
-        """
-
-        return chess.Move.from_uci(initial_position + new_position) in self.board.legal_moves
-
-    def next_move(self) -> str:
-        """
-            The main call and response loop for playing a game of chess.
-
-            Returns:
-                str: The current location and the next move.
-        """
-
-        # Assume that you are playing an arbitrary game. This function, which is
-        # the core "brain" of the bot, should return the next move in any circumstance.
-
-        move = str(random.choice([_ for _ in self.board.legal_moves]))
-        print("My move: " + move)
-        return move
-
-
 # Add promotion stuff
 
 if __name__ == "__main__":
-
-    chess_bot = Bot()  # you can enter a FEN here, like Bot("...")
     with game_manager():
 
         """
@@ -94,22 +57,35 @@ if __name__ == "__main__":
 
         """
 
-        playing = True
+        # Initialize the game and MCTS parameters
+        chess_game = ChessGame()
+        args = {
+            'C': 1.41,          # Exploration parameter
+            'num_searches': 1000  # Number of searches (iterations) for MCTS
+        }
+        mcts = MCTS(chess_game, args)
 
-        while playing:
-            if chess_bot.board.turn:
-                chess_bot.board.push_san(test_bot.get_move(chess_bot.board))
+        side = input("Enter 1 for White or 0 for Black")
+        side = chess.BLACK if side == 0 else chess.WHITE
+
+        # Main game loop
+        while not chess_game.board.is_game_over():
+            print('\n')
+            print(chess_game.board)
+            if chess_game.board.turn == side:
+                # MCTS player (White)
+                neutral_state = chess_game.change_perspective(chess_game.board, side)
+                mcts_probs = mcts.search(neutral_state, side)
+                action = chess_game.get_valid_moves(neutral_state)[np.argmax(mcts_probs)]
             else:
-                chess_bot.board.push_san(chess_bot.next_move())
-            print(chess_bot.board, end="\n\n")
+                # Random player (Black)
+                valid_moves = list(chess_game.board.legal_moves)
+                action = random.choice(valid_moves)
 
-            if chess_bot.board.is_game_over():
-                if chess_bot.board.is_stalemate():
-                    print("Is stalemate")
-                elif chess_bot.board.is_insufficient_material():
-                    print("Is insufficient material")
+            chess_game.board.push(action)
 
-                # EX: Outcome(termination=<Termination.CHECKMATE: 1>, winner=True)
-                print(chess_bot.board.outcome())
+        # Print the final board and the game result
+        print(chess_game.board)
+        print("Game result:", chess_game.board.result())
 
-                playing = False
+     
